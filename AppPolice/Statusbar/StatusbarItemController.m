@@ -9,6 +9,7 @@
 #import "StatusbarItemController.h"
 #import "StatusbarItemView.h"
 #import "APPreferencesController.h"
+#include "proc_cpulim.h"
 
 @implementation StatusbarItemController
 
@@ -138,8 +139,8 @@
     NSString *applicationName = [app localizedName];
     if ([storedApplicationCheckFocus objectForKey:applicationName] != nil) {
         if ([(NSNumber *)[storedApplicationCheckFocus objectForKey:applicationName] boolValue]) {
-            NSLog(@"%@ temp turn off", applicationName);
-            proc_cpulim_set([app processIdentifier], @0.0);
+            NSLog(@"Name: %@ PID: %i temp turn off", applicationName, [app processIdentifier]);
+            proc_cpulim_set([app processIdentifier], system_ncpu());
         }
     }
 }
@@ -155,7 +156,7 @@
     if ([storedApplicationLimits objectForKey:applicationName] != nil) {
         NSNumber *limit = (NSNumber *)[storedApplicationLimits objectForKey:applicationName];
         if ([(NSNumber *)[storedApplicationCheckFocus objectForKey:applicationName] boolValue]) {
-            NSLog(@"%@ turn back on", applicationName);
+            NSLog(@"Name: %@ PID: %i turn back on at limit %@", applicationName, [app processIdentifier], limit);
             proc_cpulim_set([app processIdentifier], [limit floatValue]);
         }
     }

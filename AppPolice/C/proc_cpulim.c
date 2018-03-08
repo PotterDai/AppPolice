@@ -140,7 +140,7 @@ static void do_proc_cpulim_set(int pid, float newlim) {
 		if (task->pid == pid) {
 			if (newlim == 0)
 				proc_task_delete(pid);
-			else
+            else
 				task->lim = newlim;
 			return;
 		}

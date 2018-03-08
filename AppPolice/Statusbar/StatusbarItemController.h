@@ -32,7 +32,4 @@
 //- (void)addItemToStatusbar;
 - (void)setStatusbarItemMenu:(CMMenu *)menu;
 
-// Timer
-- (void)timerFired:(id)timer;
-
 @end

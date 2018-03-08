@@ -343,8 +343,9 @@
     
     if (toCheck) {
         for (NSRunningApplication *currApp in [[NSWorkspace sharedWorkspace] runningApplications]) {
-            if ([currApp processIdentifier] == pid && [currApp isActive]) {
-                limit = NO_LIMIT;
+            if ([currApp processIdentifier] == pid) {
+                if ([currApp isActive])
+                    limit = NO_LIMIT;
                 break;
             }
         }
