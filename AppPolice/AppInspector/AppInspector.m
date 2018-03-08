@@ -25,7 +25,7 @@
 
 - (void)cpuTimerFire:(NSTimer *)timer;
 - (void)updateTextfieldsWithLimitValue:(float)limit;
-- (void)setProcessLimit:(float)limit;
+- (void)setProcessStat:(float)limit:(bool)toCheck;
 - (float)limitFromSliderValue:(double)value;			// |limit| is a fraction of 1 for 100%
 - (double)sliderValueFromLimit:(float)limit;
 - (double)levelIndicatorValueFromCPU:(double)cpu;
@@ -71,6 +71,10 @@
     [_applicationUserTextfield setBackgroundColor:[NSColor clearColor]];
     [_applicationCPUTextfield setDrawsBackground:YES];
     [_applicationCPUTextfield setBackgroundColor:[NSColor clearColor]];
+    
+    [_focusCheckbox setTarget:self];
+    [_focusCheckbox setAction:@selector(sliderAction:)];
+    [_focusCheckbox setState:NSControlStateValueOff];
 }
 
 
@@ -100,7 +104,8 @@
 	NSString *name = [applicationInfo objectForKey:APApplicationInfoNameKey];
 	pid_t pid = [(NSNumber *)[applicationInfo objectForKey:APApplicationInfoPidKey] intValue];
 	float limit = [(NSNumber *)[applicationInfo objectForKey:APApplicationInfoLimitKey] floatValue];
-
+    bool checkFocus = [(NSNumber *)[applicationInfo objectForKey:APApplicationInfoCheckFocusKey] boolValue];
+    
 	// Technics used to load default images (kept for reference)
 	// NSImage *genericIcon = [[NSWorkspace sharedWorkspace] iconForFileType:NSFileTypeForHFSTypeCode(kGenericExtensionIcon)];
 	// NSImage *genericIcon = [[NSWorkspace sharedWorkspace] iconForFile:@"/bin/ls"];
@@ -136,7 +141,7 @@
 		[_slider setDoubleValue:SLIDER_NOT_LIMITED_VALUE];
 		[self updateTextfieldsWithLimitValue:NO_LIMIT];
 		[_levelIndicator setDoubleValue:0.0];
-		[self setProcessLimit:NO_LIMIT];
+        [self setProcessStat:NO_LIMIT:false];
 	} else {
 		_processIsRunning = YES;
 		_cpuTime.timestamp = get_timestamp();
@@ -165,6 +170,8 @@
 		}
 		[self updateTextfieldsWithLimitValue:limit];
 		
+        //Update check focus
+        [_focusCheckbox setState: checkFocus ? NSControlStateValueOn : NSControlStateValueOff];
 		
 		NSDictionary *timerUserInfo = [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithInt:pid], @"pid", nil];
 		_cpuTimer = [NSTimer timerWithTimeInterval:2.0 target:self selector:@selector(cpuTimerFire:) userInfo:timerUserInfo repeats:YES];
@@ -217,7 +224,7 @@
 		[_slider setDoubleValue:SLIDER_NOT_LIMITED_VALUE];
 		[self updateTextfieldsWithLimitValue:NO_LIMIT];
 		[_levelIndicator setDoubleValue:0.0];
-		[self setProcessLimit:NO_LIMIT];
+        [self setProcessStat:NO_LIMIT:false];
 		
 		[_cpuTimer invalidate];
 		_cpuTimer = nil;
@@ -255,15 +262,19 @@
 		limit = [self limitFromSliderValue:value];
 		
 	[self updateTextfieldsWithLimitValue:limit];
+    
+    bool checkFocus = [_focusCheckbox state] == NSControlStateValueOn ? true : false;
+    if (limit == NO_LIMIT)
+        checkFocus = false;
+    [_focusCheckbox setState:checkFocus ? NSControlStateValueOn : NSControlStateValueOff];
 	
 	NSEvent *theEvent = [NSApp currentEvent];
 	NSEventType eventType = [theEvent type];
 	
 	if (eventType == NSLeftMouseUp) {		// update applicatoinInfo when slider is released
-		[self setProcessLimit:limit];
+        [self setProcessStat:limit:checkFocus];
 	}
 }
-
 
 /*
  *
@@ -280,43 +291,66 @@
 	}
 }
 
-
 /*
  *
  */
-- (void)setProcessLimit:(float)limit {
+- (void)setProcessStat:(float)limit:(bool)toCheck {
 	// Update the attached-to menu item state
 	if (! _attachedToItem)
 		return;
 	
-	if (! _processIsRunning)
+	if (! _processIsRunning) {
 		limit = NO_LIMIT;
+        toCheck = false;
+    }
 	
 	NSMutableDictionary *applicationInfo = [_attachedToItem representedObject];
 	[applicationInfo setObject:[NSNumber numberWithFloat:limit] forKey:APApplicationInfoLimitKey];
+    [applicationInfo setObject:[NSNumber numberWithBool:toCheck] forKey:APApplicationInfoCheckFocusKey];
     
     NSString *applicationName = [applicationInfo valueForKey:APApplicationInfoNameKey];
     if (applicationName != nil && [applicationName length] > 0) {
         NSUserDefaults *preferences = [NSUserDefaults standardUserDefaults];
+        
         NSMutableDictionary *storedApplicationLimits = [[preferences valueForKey:kPrefApplicationLimits] mutableCopy];
         if (storedApplicationLimits == nil) {
             storedApplicationLimits = [NSMutableDictionary new];
         }
+        
+        NSMutableDictionary *storedApplicationCheckFocus = [[preferences valueForKey:kPrefApplicationCheckFocus] mutableCopy];
+        if (storedApplicationCheckFocus == nil) {
+            storedApplicationCheckFocus = [NSMutableDictionary new];
+        }
+        
         if (limit == NO_LIMIT) {
             if ([storedApplicationLimits objectForKey:applicationName] != nil) {
                 [storedApplicationLimits removeObjectForKey:applicationName];
             }
+            if ([storedApplicationCheckFocus objectForKey:applicationName] != nil) {
+                [storedApplicationCheckFocus removeObjectForKey:applicationName];
+            }
         } else {
             [storedApplicationLimits setValue:[NSNumber numberWithFloat:limit] forKey:applicationName];
+            [storedApplicationCheckFocus setValue:[NSNumber numberWithBool:toCheck] forKey:applicationName];
         }
         [preferences setObject:storedApplicationLimits forKey:kPrefApplicationLimits];
+        [preferences setObject:storedApplicationCheckFocus forKey:kPrefApplicationCheckFocus];
     }
 	
 	NSNumber *pid_n = [applicationInfo objectForKey:APApplicationInfoPidKey];
 	pid_t pid = [pid_n intValue];
 	// Set limit for process and start limiter in case it's not already running
-	proc_cpulim_set(pid, limit);
-//	proc_cpulim_resume();
+    
+    if (toCheck) {
+        for (NSRunningApplication *currApp in [[NSWorkspace sharedWorkspace] runningApplications]) {
+            if ([currApp processIdentifier] == pid && [currApp isActive]) {
+                limit = NO_LIMIT;
+                break;
+            }
+        }
+    }
+
+    proc_cpulim_set(pid, limit);
 	
 	// Post notification about process changed limit
 	NSDictionary *userInfo = @{

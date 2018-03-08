@@ -13,6 +13,7 @@
 #define APApplicationInfoIconKey @"appInfoIconKey"
 #define APApplicationInfoPidKey @"appInfoPidKey"
 #define APApplicationInfoLimitKey @"appInfoLimitKey"
+#define APApplicationInfoCheckFocusKey @"appInfoCheckFocusKey"
 #define APApplicationInfoUserKey @"appInfoUserKey"
 
 #define APAppInspectorPopoverDidShow @"appInspectorPopoverDidShow"
@@ -50,6 +51,7 @@
 	IBOutlet NSTextField *_sliderRightTextfield;
 	IBOutlet NSSlider *_slider;
 	IBOutlet NSLevelIndicator *_levelIndicator;
+    IBOutlet NSButton *_focusCheckbox;
 	NSPopover *_hintPopover;
 }
 

@@ -10,6 +10,7 @@
 
 #define kPrefRestoreApplicationLimits @"APRestoreApplicationLimits"
 #define kPrefApplicationLimits @"APApplicationLimits"
+#define kPrefApplicationCheckFocus @"APApplicationCheckFocus"
 
 @interface APPreferencesController : NSWindowController
 

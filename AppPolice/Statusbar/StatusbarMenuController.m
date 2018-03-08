@@ -191,7 +191,7 @@ extern int gAPAllLimitsPaused;
 		_runningSystemProcesses = [[NSMutableArray alloc] init];
 		(void) [self updateRunningProcesses];
 	}
-	
+    
 	[self populateMenu:runningAppsMenu
 	  withApplications:_runningApplications
 	andSystemProcesses:_runningSystemProcesses];
@@ -235,6 +235,8 @@ extern int gAPAllLimitsPaused;
     
     NSUserDefaults *preferences = [NSUserDefaults standardUserDefaults];
     NSDictionary *storedApplicationLimits = [preferences objectForKey:kPrefApplicationLimits];
+    NSDictionary *storedApplicationCheckFocus = [preferences objectForKey:kPrefApplicationCheckFocus];
+
     BOOL restoreApplicationLimits = [preferences boolForKey:kPrefRestoreApplicationLimits];
     
 	
@@ -280,18 +282,28 @@ extern int gAPAllLimitsPaused;
 		}
         
         NSString *applicationName = [app localizedName];
+        NSNumber *checkFocus = [NSNumber numberWithBool:false];
+        if (restoreApplicationLimits && [storedApplicationCheckFocus objectForKey:applicationName] != nil) {
+            checkFocus = (NSNumber *)[storedApplicationCheckFocus objectForKey:applicationName];
+            NSLog(@"Restoring checkfocus for %@: %@", applicationName, checkFocus);
+        }
+        
         NSNumber *limit = @0.0;
         if (restoreApplicationLimits && [storedApplicationLimits objectForKey:applicationName] != nil) {
             limit = (NSNumber *)[storedApplicationLimits objectForKey:applicationName];
             NSLog(@"Restoring limit for %@: %@", applicationName, limit);
-            proc_cpulim_set([app processIdentifier], [limit floatValue]);
+            if ([checkFocus boolValue] && app.isActive)
+                proc_cpulim_set([app processIdentifier], PROCESS_NOT_LIMITED);
+            else
+                proc_cpulim_set([app processIdentifier], [limit floatValue]);
         }
 		
         NSMutableDictionary *appInfo = [[@{
             APApplicationInfoNameKey: applicationName,
             APApplicationInfoIconKey: icon,
             APApplicationInfoPidKey: [NSNumber numberWithInt:[app processIdentifier]],
-            APApplicationInfoLimitKey: limit
+            APApplicationInfoLimitKey: limit,
+            APApplicationInfoCheckFocusKey: checkFocus,
         } mutableCopy] autorelease];
 				
 		item = [[[CMMenuItem alloc] initWithTitle:[app localizedName]
@@ -336,12 +348,14 @@ extern int gAPAllLimitsPaused;
                 NSLog(@"Restoring limit for %@: %@", processName, limit);
                 proc_cpulim_set([processId intValue], [limit floatValue]);
             }
+            NSNumber *checkFocus = [NSNumber numberWithBool:false]; //System processes always ignore focus
             
             NSMutableDictionary *appInfo = [[@{
                 APApplicationInfoNameKey: processName,
                 APApplicationInfoIconKey: genericIcon,
                 APApplicationInfoPidKey: processId,
-                APApplicationInfoLimitKey: limit
+                APApplicationInfoLimitKey: limit,
+                APApplicationInfoCheckFocusKey: checkFocus,
             } mutableCopy] autorelease];
             
             CMMenuItem *item = [[[CMMenuItem alloc] initWithTitle:processName
@@ -728,12 +742,14 @@ extern int gAPAllLimitsPaused;
                     NSLog(@"Restoring limit for %@: %@", processName, limit);
                     proc_cpulim_set([processId intValue], [limit floatValue]);
                 }
-                
+                NSNumber *checkFocus = [NSNumber numberWithBool:false]; //System processes always ignore focus
+
                 NSMutableDictionary *appInfo = [[@{
                     APApplicationInfoNameKey: processName,
                     APApplicationInfoIconKey: genericIcon,
                     APApplicationInfoPidKey: processId,
-                    APApplicationInfoLimitKey: limit
+                    APApplicationInfoLimitKey: limit,
+                    APApplicationInfoCheckFocusKey: checkFocus,
                 } mutableCopy] autorelease];
 				
 				CMMenuItem *item = [[[CMMenuItem alloc] initWithTitle:[procInfo objectForKey:kProcNameKey]
@@ -765,6 +781,7 @@ extern int gAPAllLimitsPaused;
     
     NSUserDefaults *preferences = [NSUserDefaults standardUserDefaults];
     NSDictionary *storedApplicationLimits = [preferences objectForKey:kPrefApplicationLimits];
+    NSDictionary *storedApplicationCheckFocus = [preferences objectForKey:kPrefApplicationCheckFocus];
     BOOL restoreApplicationLimits = [preferences boolForKey:kPrefRestoreApplicationLimits];
 	
 	NSUInteger elementsCount = [_runningApplications count];
@@ -808,11 +825,21 @@ extern int gAPAllLimitsPaused;
 	
     
     NSString *applicationName = [app localizedName];
+    
+    NSNumber *checkFocus = [NSNumber numberWithBool:false];
+    if (restoreApplicationLimits && [storedApplicationCheckFocus objectForKey:applicationName] != nil) {
+        checkFocus = (NSNumber *)[storedApplicationCheckFocus objectForKey:applicationName];
+        NSLog(@"Restoring checkfocus for %@: %@", applicationName, checkFocus);
+    }
+    
     NSNumber *limit = @0.0;
     if (restoreApplicationLimits && [storedApplicationLimits objectForKey:applicationName] != nil) {
         limit = (NSNumber *)[storedApplicationLimits objectForKey:applicationName];
         NSLog(@"Restoring limit for %@: %@", applicationName, limit);
-        proc_cpulim_set([app processIdentifier], [limit floatValue]);
+        if ([checkFocus boolValue] && app.isActive)
+            proc_cpulim_set([app processIdentifier], PROCESS_NOT_LIMITED);
+        else
+            proc_cpulim_set([app processIdentifier], [limit floatValue]);
     }
     
     NSMutableDictionary *appInfo = [[@{
@@ -1061,6 +1088,13 @@ extern int gAPAllLimitsPaused;
 	[_preferencesWindowController showWindow:nil];
 }
 
+/*
+ *
+ */
+- (void)timerFired:(NSTimer *)timerFired {
+    // Get the current load
+    [super timerFired:timerFired];
+} // timerFired
 
 /*
  *

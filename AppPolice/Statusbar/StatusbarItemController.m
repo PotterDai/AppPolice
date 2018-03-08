@@ -8,6 +8,7 @@
 
 #import "StatusbarItemController.h"
 #import "StatusbarItemView.h"
+#import "APPreferencesController.h"
 
 @implementation StatusbarItemController
 
@@ -36,11 +37,19 @@
 												 selector:@selector(statusItemMouseUpNotificationHandler:)
 													 name:StatusbarItemMouseUpNotification
 												   object:nil];
-		
+        
+        NSNotificationCenter *workspaceNotificationCenter = [[NSWorkspace sharedWorkspace] notificationCenter];
+        [workspaceNotificationCenter addObserver:self
+                                        selector:@selector(workspaceSessionDidBecomeActiveNotification:)
+                                            name:NSWorkspaceDidActivateApplicationNotification
+                                          object:nil];
+        [workspaceNotificationCenter addObserver:self
+                                        selector:@selector(workspaceSessionDidResignActiveNotification:)
+                                            name:NSWorkspaceDidDeactivateApplicationNotification
+                                          object:nil];
 	}
 	return self;
 }
-
 
 - (void)dealloc {
 	[[NSStatusBar systemStatusBar] removeStatusItem:_statusbarItem];
@@ -118,6 +127,38 @@
 - (void)menuDidEndTrackingNotificationHandler:(NSNotification *)notification {
 	[_view setHighlighted:NO];
 	[[NSNotificationCenter defaultCenter] removeObserver:self name:CMMenuDidEndTrackingNotification object:nil];
+}
+
+- (void)workspaceSessionDidBecomeActiveNotification:(NSNotification *)notification {
+    NSRunningApplication *app = [[notification userInfo] objectForKey:NSWorkspaceApplicationKey];
+    
+    NSUserDefaults *preferences = [NSUserDefaults standardUserDefaults];
+    NSDictionary *storedApplicationCheckFocus = [preferences objectForKey:kPrefApplicationCheckFocus];
+    
+    NSString *applicationName = [app localizedName];
+    if ([storedApplicationCheckFocus objectForKey:applicationName] != nil) {
+        if ([(NSNumber *)[storedApplicationCheckFocus objectForKey:applicationName] boolValue]) {
+            NSLog(@"%@ temp turn off", applicationName);
+            proc_cpulim_set([app processIdentifier], @0.0);
+        }
+    }
+}
+
+- (void)workspaceSessionDidResignActiveNotification:(NSNotification *)notification {
+    NSRunningApplication *app = [[notification userInfo] objectForKey:NSWorkspaceApplicationKey];
+ 
+    NSUserDefaults *preferences = [NSUserDefaults standardUserDefaults];
+    NSDictionary *storedApplicationLimits = [preferences objectForKey:kPrefApplicationLimits];
+    NSDictionary *storedApplicationCheckFocus = [preferences objectForKey:kPrefApplicationCheckFocus];
+    
+    NSString *applicationName = [app localizedName];
+    if ([storedApplicationLimits objectForKey:applicationName] != nil) {
+        NSNumber *limit = (NSNumber *)[storedApplicationLimits objectForKey:applicationName];
+        if ([(NSNumber *)[storedApplicationCheckFocus objectForKey:applicationName] boolValue]) {
+            NSLog(@"%@ turn back on", applicationName);
+            proc_cpulim_set([app processIdentifier], [limit floatValue]);
+        }
+    }
 }
 
 @end
